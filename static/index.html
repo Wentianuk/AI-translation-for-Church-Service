@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>教会同声翻译</title>
+  <style>
+    :root {
+      --bg: #0d0d1a;
+      --surface: #161628;
+      --accent: #7c6af7;
+      --text-main: #f0f0ff;
+      --text-secondary: #8888aa;
+      --text-history: #555577;
+      --border: #2a2a45;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text-main);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Layout ── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    #header .title {
+      font-size: 13px;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+    }
+    #status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    #dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #444;
+      transition: background 0.4s;
+    }
+    #dot.connected { background: #4caf82; }
+    #dot.error     { background: #e05555; }
+
+    /* ── History ── */
+    #history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .history-item {
+      opacity: 0;
+      transform: translateY(6px);
+      animation: fadeIn 0.5s ease forwards;
+      border-left: 2px solid var(--border);
+      padding-left: 12px;
+    }
+    .history-item .h-translated {
+      font-size: clamp(14px, 2.5vw, 18px);
+      color: var(--text-history);
+      line-height: 1.5;
+    }
+    .history-item .h-original {
+      font-size: clamp(11px, 1.8vw, 14px);
+      color: #333355;
+      margin-top: 2px;
+    }
+
+    /* ── Current subtitle (bottom) ── */
+    #subtitle-area {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-top: 2px solid var(--accent);
+      padding: 20px 28px 24px;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    #current-translated {
+      font-size: clamp(26px, 5vw, 52px);
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--text-main);
+      letter-spacing: 0.03em;
+      transition: opacity 0.3s;
+    }
+
+    #current-original {
+      font-size: clamp(14px, 2.2vw, 22px);
+      color: var(--text-secondary);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── QR corner ── */
+    #qr-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 40px; height: 40px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    #qr-btn:hover { background: #222240; }
+    #qr-btn svg { width: 20px; height: 20px; fill: var(--text-secondary); }
+
+    #qr-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+    }
+    #qr-modal.open { display: flex; }
+    #qr-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+      max-width: 90vw;
+    }
+    #qr-box img { width: 200px; height: 200px; border-radius: 8px; }
+    #qr-box p  { margin-top: 12px; font-size: 13px; color: var(--text-secondary); }
+    #qr-box a  { color: var(--accent); }
+
+    /* ── Waiting state ── */
+    #waiting {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 15px;
+    }
+    .pulse {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50%       { opacity: 1;   transform: scale(1.2); }
+    }
+
+    /* ── Projector mode (/?mode=projector) ── */
+    body.projector #history { display: none; }
+    body.projector #subtitle-area {
+      flex: 1;
+      min-height: unset;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 60px;
+    }
+    body.projector #current-translated {
+      font-size: clamp(40px, 7vw, 88px);
+    }
+    body.projector #current-original {
+      font-size: clamp(20px, 3vw, 36px);
+    }
+    body.projector #header { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <span class="title">教会同声翻译 · 粤 → 普</span>
+    <div id="status">
+      <div id="dot"></div>
+      <span id="status-text">连接中…</span>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div id="history"></div>
+
+  <!-- Current Subtitle -->
+  <div id="subtitle-area">
+    <div id="waiting">
+      <span class="pulse"></span>
+      等待讲道开始…
+    </div>
+    <div id="current-translated" style="display:none"></div>
+    <div id="current-original"   style="display:none"></div>
+  </div>
+
+</div>
+
+<!-- QR code button -->
+<button id="qr-btn" title="显示二维码">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 3h7v7H3V3zm1 1v5h5V4H4zm1 1h3v3H5V5zM3 14h7v7H3v-7zm1 1v5h5v-5H4zm1 1h3v3H5v-3zM14 3h7v7h-7V3zm1 1v5h5V4h-5zm1 1h3v3h-3V5zM14 14h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2zm0 3h4v1h-4v-1z"/>
+  </svg>
+</button>
+
+<!-- QR modal -->
+<div id="qr-modal">
+  <div id="qr-box">
+    <img id="qr-img" src="" alt="二维码" />
+    <p>同一 WiFi 下扫码，在手机上查看字幕</p>
+    <p><a id="qr-url" href="#" target="_blank"></a></p>
+    <p style="margin-top:16px; font-size:12px; color:#444">点击任意处关闭</p>
+  </div>
+</div>
+
+<script>
+  // ── Projector mode ──────────────────────────────────────────────────────────
+  const params = new URLSearchParams(location.search);
+  if (params.get("mode") === "projector") {
+    document.body.classList.add("projector");
+  }
+
+  // ── Elements ────────────────────────────────────────────────────────────────
+  const dot            = document.getElementById("dot");
+  const statusText     = document.getElementById("status-text");
+  const history        = document.getElementById("history");
+  const waiting        = document.getElementById("waiting");
+  const currentTrans   = document.getElementById("current-translated");
+  const currentOrig    = document.getElementById("current-original");
+  const qrBtn          = document.getElementById("qr-btn");
+  const qrModal        = document.getElementById("qr-modal");
+  const qrImg          = document.getElementById("qr-img");
+  const qrUrl          = document.getElementById("qr-url");
+
+  const MAX_HISTORY = 6;
+
+  // ── WebSocket ────────────────────────────────────────────────────────────────
+  let ws, reconnectTimer;
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onopen = () => {
+      dot.className = "connected";
+      statusText.textContent = "已连接";
+    };
+
+    ws.onclose = () => {
+      dot.className = "error";
+      statusText.textContent = "已断开，重连中…";
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => {
+      dot.className = "error";
+      statusText.textContent = "连接错误";
+    };
+
+    ws.onmessage = (evt) => {
+      const { original, translated } = JSON.parse(evt.data);
+      updateSubtitle(original, translated);
+    };
+  }
+
+  // ── Subtitle update ──────────────────────────────────────────────────────────
+  function updateSubtitle(original, translated) {
+    // Move previous current to history
+    const prevTrans = currentTrans.textContent;
+    const prevOrig  = currentOrig.textContent;
+    if (prevTrans) {
+      pushHistory(prevOrig, prevTrans);
+    }
+
+    // Hide waiting indicator
+    waiting.style.display = "none";
+
+    // Show new subtitle
+    currentTrans.style.display = "block";
+    currentOrig.style.display  = "block";
+
+    currentTrans.style.opacity = "0";
+    currentTrans.textContent   = translated;
+    currentOrig.textContent    = original;
+
+    requestAnimationFrame(() => {
+      currentTrans.style.transition = "opacity 0.35s";
+      currentTrans.style.opacity    = "1";
+    });
+
+    // Auto-scroll history to bottom
+    history.scrollTop = history.scrollHeight;
+  }
+
+  function pushHistory(orig, trans) {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    item.innerHTML = `
+      <div class="h-translated">${escHtml(trans)}</div>
+      <div class="h-original">${escHtml(orig)}</div>
+    `;
+    history.appendChild(item);
+
+    // Trim old history
+    while (history.children.length > MAX_HISTORY) {
+      history.removeChild(history.firstChild);
+    }
+    history.scrollTop = history.scrollHeight;
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  // ── QR Code ──────────────────────────────────────────────────────────────────
+  async function loadQR() {
+    try {
+      const res  = await fetch("/qr");
+      const data = await res.json();
+      qrImg.src         = `data:image/png;base64,${data.qr}`;
+      qrUrl.href        = data.url;
+      qrUrl.textContent = data.url;
+    } catch (e) {
+      console.warn("无法加载二维码", e);
+    }
+  }
+
+  qrBtn.addEventListener("click", async () => {
+    if (!qrImg.src.startsWith("data:")) await loadQR();
+    qrModal.classList.add("open");
+  });
+  qrModal.addEventListener("click", () => qrModal.classList.remove("open"));
+  document.getElementById("qr-box").addEventListener("click", e => e.stopPropagation());
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  connect();
+  loadQR();
+</script>
+</body>
+</html>
