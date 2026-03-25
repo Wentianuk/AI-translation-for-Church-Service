@@ -1,0 +1,12 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+*.log
+session_logs/
+
+# Editor/OS noise (if any)
+.cursor/
+.idea/
+.vscode/
+
